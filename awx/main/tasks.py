@@ -1956,21 +1956,17 @@ class RunInventoryUpdate(BaseTask):
         # If called via build_safe_args, do not re-create file
         if getattr(self, '_inventory_path', False):
             return self._inventory_path
-        if src in CLOUD_PROVIDERS:
-            if src in InventorySource.injectors:
-                injector = InventorySource.injectors[src](kwargs['ansible_version'])
-                if injector.should_use_plugin():
-                    content = injector.inventory_contents(inventory_update, kwargs['private_data_dir'])
-                    # must be a statically named file
-                    inventory_path = os.path.join(kwargs['private_data_dir'], injector.filename)
-                    with open(inventory_path, 'w') as f:
-                        f.write(content)
-                    os.chmod(inventory_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-                else:
-                    # Use the vendored script path
-                    inventory_path = self.get_path_to('..', 'plugins', 'inventory', '%s.py' % src)
+        if src in InventorySource.injectors:
+            injector = InventorySource.injectors[src](kwargs['ansible_version'])
+            if injector.should_use_plugin():
+                content = injector.inventory_contents(inventory_update, kwargs['private_data_dir'])
+                # must be a statically named file
+                inventory_path = os.path.join(kwargs['private_data_dir'], injector.filename)
+                with open(inventory_path, 'w') as f:
+                    f.write(content)
+                os.chmod(inventory_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
             else:
-                # TODO: get rid of this else after all CLOUD_PROVIDERS have injectors written
+                # Use the vendored script path
                 inventory_path = self.get_path_to('..', 'plugins', 'inventory', '%s.py' % src)
         elif src == 'scm':
             inventory_path = inventory_update.get_actual_source_path()

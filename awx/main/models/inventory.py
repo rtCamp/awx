@@ -1863,10 +1863,7 @@ class PluginFileInjector(object):
         env.update(injector_env)
         return env
 
-    def get_plugin_env(self, inventory_update, private_data_dir, private_data_files, safe=False):
-        return self.get_script_env(inventory_update, private_data_dir, private_data_files, safe)
-
-    def get_script_env(self, inventory_update, private_data_dir, private_data_files, safe=False):
+    def _get_shared_env(self, inventory_update, private_data_dir, private_data_files, safe=False):
         """By default, we will apply the standard managed_by_tower injectors
         for the script injection
         """
@@ -1878,9 +1875,17 @@ class PluginFileInjector(object):
             if safe:
                 from awx.main.models.credential import build_safe_env
                 injected_env = build_safe_env(injected_env)
+        return injected_env
 
-        # Put in env var reference to private data files, if relevant
+    def get_plugin_env(self, inventory_update, private_data_dir, private_data_files, safe=False):
+        return self._get_shared_env(inventory_update, private_data_dir, private_data_files, safe)
+
+    def get_script_env(self, inventory_update, private_data_dir, private_data_files, safe=False):
+        injected_env = self._get_shared_env(inventory_update, private_data_dir, private_data_files, safe)
+
+        # Put in env var reference to private ini data files, if relevant
         if self.ini_env_reference:
+            credential = inventory_update.get_cloud_credential()
             cred_data = private_data_files.get('credentials', '')
             injected_env[self.ini_env_reference] = cred_data[credential]
 
@@ -1918,14 +1923,14 @@ class azure_rm(PluginFileInjector):
     initial_version = '2.7'
     ini_env_reference = 'AZURE_INI_PATH'
 
-    def inventory_as_dict(self, inventory_source):
+    def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = dict(
             plugin='azure_rm',
         )
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
-        if inventory_source.source_regions and 'all' not in inventory_source.source_regions:
-            ret['regions'] = inventory_source.source_regions.split(',')
+        if inventory_update.source_regions and 'all' not in inventory_update.source_regions:
+            ret['regions'] = inventory_update.source_regions.split(',')
         return ret
 
     def build_script_private_data(self, inventory_update, private_data_dir):
@@ -1954,14 +1959,14 @@ class ec2(PluginFileInjector):
     initial_version = '2.5'
     ini_env_reference = 'EC2_INI_PATH'
 
-    def inventory_as_dict(self, inventory_source):
+    def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = dict(
             plugin='aws_ec2',
         )
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
-        if inventory_source.source_regions and 'all' not in inventory_source.source_regions:
-            ret['regions'] = inventory_source.source_regions.split(',')
+        if inventory_update.source_regions and 'all' not in inventory_update.source_regions:
+            ret['regions'] = inventory_update.source_regions.split(',')
         return ret
 
     def build_script_private_data(self, inventory_update, private_data_dir):
