@@ -1925,7 +1925,7 @@ class azure_rm(PluginFileInjector):
 
     def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = dict(
-            plugin='azure_rm',
+            plugin=self.plugin_name,
         )
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
@@ -1961,7 +1961,7 @@ class ec2(PluginFileInjector):
 
     def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = dict(
-            plugin='aws_ec2',
+            plugin=self.plugin_name,
         )
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
@@ -2025,14 +2025,11 @@ class gce(PluginFileInjector):
         return env
 
     def inventory_as_dict(self, inventory_update, private_data_dir):
-        # NOTE: generalizing this to be use templating like credential types would be nice
-        # but with YAML content that need to inject list parameters into the YAML,
-        # it is hard to see any clean way we can possibly do this
         credential = inventory_update.get_cloud_credential()
         builtin_injector = self.get_builtin_injector(inventory_update.source)
         creds_path = builtin_injector(credential, {}, private_data_dir)
         ret = dict(
-            plugin='gcp_compute',
+            plugin=self.plugin_name,
             projects=[credential.get_input('project', default='')],
             filters=None,  # necessary cruft, see: https://github.com/ansible/ansible/pull/50025
             service_account_file=creds_path,
@@ -2077,11 +2074,10 @@ class vmware(PluginFileInjector):
 
 class openstack(PluginFileInjector):
     ini_env_reference = 'OS_CLIENT_CONFIG_FILE'
+    plugin_name = 'openstack'
+    initial_version = '2.4'
 
-    def build_script_private_data(self, inventory_update, private_data_dir):
-        credential = inventory_update.get_cloud_credential()
-        private_data = {'credentials': {}}
-
+    def _get_clouds_dict(self, inventory_update, credential, private_data_dir, mk_cache=True):
         openstack_auth = dict(auth_url=credential.get_input('host', default=''),
                               username=credential.get_input('username', default=''),
                               password=credential.get_input('password', default=''),
@@ -2090,14 +2086,6 @@ class openstack(PluginFileInjector):
             openstack_auth['domain_name'] = credential.get_input('domain', default='')
 
         private_state = inventory_update.source_vars_dict.get('private', True)
-        # Retrieve cache path from inventory update vars if available,
-        # otherwise create a temporary cache path only for this update.
-        cache = inventory_update.source_vars_dict.get('cache', {})
-        if not isinstance(cache, dict):
-            cache = {}
-        if not cache.get('path', ''):
-            cache_path = tempfile.mkdtemp(prefix='openstack_cache', dir=private_data_dir)
-            cache['path'] = cache_path
         openstack_data = {
             'clouds': {
                 'devstack': {
@@ -2105,8 +2093,17 @@ class openstack(PluginFileInjector):
                     'auth': openstack_auth,
                 },
             },
-            'cache': cache,
         }
+        if mk_cache:
+            # Retrieve cache path from inventory update vars if available,
+            # otherwise create a temporary cache path only for this update.
+            cache = inventory_update.source_vars_dict.get('cache', {})
+            if not isinstance(cache, dict):
+                cache = {}
+            if not cache.get('path', ''):
+                cache_path = tempfile.mkdtemp(prefix='openstack_cache', dir=private_data_dir)
+                cache['path'] = cache_path
+            openstack_data['cache'] = cache
         ansible_variables = {
             'use_hostnames': True,
             'expand_hostvars': False,
@@ -2119,10 +2116,36 @@ class openstack(PluginFileInjector):
                 provided_count += 1
         if provided_count:
             openstack_data['ansible'] = ansible_variables
+        return openstack_data
+
+    def build_script_private_data(self, inventory_update, private_data_dir):
+        credential = inventory_update.get_cloud_credential()
+        private_data = {'credentials': {}}
+
+        openstack_data = self._get_clouds_dict(inventory_update, credential, private_data_dir)
         private_data['credentials'][credential] = yaml.safe_dump(
             openstack_data, default_flow_style=False, allow_unicode=True
         )
         return private_data
+
+    def inventory_as_dict(self, inventory_update, private_data_dir):
+        credential = inventory_update.get_cloud_credential()
+
+        openstack_data = self._get_clouds_dict(inventory_update, credential, private_data_dir, mk_cache=False)
+        handle, path = tempfile.mkstemp(dir=private_data_dir)
+        f = os.fdopen(handle, 'w')
+        yaml.dump(openstack_data, f, default_flow_style=False)
+        f.close()
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+        ret = dict(
+            plugin=self.plugin_name,
+            expand_hostvars=False,
+            fail_on_errors=True,
+            inventory_hostname='uuid',  # not default, but consistent with script
+            clouds_yaml_path=[path]  # why a list? it just is
+        )
+        return ret
 
 
 class rhv(PluginFileInjector):
