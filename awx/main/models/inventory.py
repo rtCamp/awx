@@ -1319,16 +1319,6 @@ class InventorySourceOptions(BaseModel):
             )
         return None
 
-    def get_inventory_plugin_name(self, ansible_version):
-        if self.source in InventorySourceOptions.injectors:
-            return InventorySourceOptions.injectors[self.source](ansible_version).use_plugin_name()
-        if self.source in CLOUD_PROVIDERS or self.source == 'custom':
-            # TODO: today, all vendored sources are scripts
-            # in future release inventory plugins will replace these
-            return 'script'
-        # in other cases we do not specify which plugin to use
-        return None
-
     def get_cloud_credential(self):
         """Return the credential which is directly tied to the inventory source type.
         """
@@ -1840,13 +1830,6 @@ class PluginFileInjector(object):
             Version(self.ansible_version) >= Version(self.initial_version)
         )
 
-    def use_plugin_name(self):
-        if self.should_use_plugin() and self.plugin_name is not None:
-            return self.plugin_name
-        else:
-            # By default, if the plugin cannot be used, then we use old vendored scripts
-            return 'script'
-
     @staticmethod
     def get_builtin_injector(source):
         from awx.main.models.credential import injectors as builtin_injectors
@@ -2075,7 +2058,7 @@ class vmware(PluginFileInjector):
 class openstack(PluginFileInjector):
     ini_env_reference = 'OS_CLIENT_CONFIG_FILE'
     plugin_name = 'openstack'
-    initial_version = '2.4'
+    initial_version = '2.5'
 
     def _get_clouds_dict(self, inventory_update, credential, private_data_dir, mk_cache=True):
         openstack_auth = dict(auth_url=credential.get_input('host', default=''),
