@@ -2121,13 +2121,30 @@ class openstack(PluginFileInjector):
         f.close()
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 
+        def new_hostnames_thing(a_bool_maybe):
+            if a_bool_maybe:
+                return 'uuid'
+            else:
+                return 'name'
+
         ret = dict(
             plugin=self.plugin_name,
             expand_hostvars=False,
             fail_on_errors=True,
-            inventory_hostname='uuid',  # not default, but consistent with script
+            inventory_hostname=new_hostnames_thing(True),
             clouds_yaml_path=[path]  # why a list? it just is
         )
+        ansible_variables = {
+            'use_hostnames': True,
+            'expand_hostvars': False,
+            'fail_on_errors': True,
+        }
+        source_vars = inventory_update.source_vars_dict
+        for var_name in ['expand_hostvars', 'fail_on_errors']:
+            if var_name in inventory_update.source_vars_dict:
+                ret[var_name] = source_vars[var_name]
+        if 'use_hostnames' in source_vars:
+            ret['inventory_hostname'] = new_hostnames_thing(source_vars['use_hostnames'])
         return ret
 
 

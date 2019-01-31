@@ -306,6 +306,7 @@ class Command(BaseCommand):
         source = source.replace('rhv.py', 'ovirt4.py')
         source = source.replace('satellite6.py', 'foreman.py')
         source = source.replace('vmware.py', 'vmware_inventory.py')
+        source = source.replace('openstack.py', 'openstack_inventory.py')
         if not os.path.exists(source):
             raise IOError('Source does not exist: %s' % source)
         source = os.path.join(os.getcwd(), os.path.dirname(source),

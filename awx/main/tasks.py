@@ -1978,11 +1978,7 @@ class RunInventoryUpdate(BaseTask):
                 os.chmod(inventory_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
             else:
                 # Use the vendored script path
-                use_src = src
-                if src == 'openstack':
-                    # dependency related exception
-                    src = 'openstack_inventory'
-                inventory_path = self.get_path_to('..', 'plugins', 'inventory', '%s.py' % use_src)
+                inventory_path = self.get_path_to('..', 'plugins', 'inventory', '%s.py' % src)
         elif src == 'scm':
             inventory_path = inventory_update.get_actual_source_path()
         elif src == 'custom':
