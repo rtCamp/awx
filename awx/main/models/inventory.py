@@ -1909,7 +1909,15 @@ class azure_rm(PluginFileInjector):
     def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = dict(
             plugin=self.plugin_name,
+            # By default the script did not filter hosts
+            default_host_filters=[],
+            # Groups that the script returned
+            keyed_groups=[
+                {'prefix': None, 'key': 'location'},
+                {'prefix': None, 'key': 'name'}
+            ]
         )
+
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
         if inventory_update.source_regions and 'all' not in inventory_update.source_regions:
