@@ -1945,6 +1945,11 @@ class ec2(PluginFileInjector):
     def inventory_as_dict(self, inventory_update, private_data_dir):
         ret = dict(
             plugin=self.plugin_name,
+            hostnames=[
+                'network-interface.addresses.association.public-ip',  # non-default
+                'dns-name',
+                'private-dns-name'
+            ]
         )
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
@@ -2016,7 +2021,8 @@ class gce(PluginFileInjector):
             projects=[credential.get_input('project', default='')],
             filters=None,  # necessary cruft, see: https://github.com/ansible/ansible/pull/50025
             service_account_file=creds_path,
-            auth_kind="serviceaccount"
+            auth_kind="serviceaccount",
+            hostnames=['name', 'public_ip', 'private_ip']
         )
         if inventory_update.source_regions and 'all' not in inventory_update.source_regions:
             ret['zones'] = inventory_update.source_regions.split(',')
@@ -2098,6 +2104,8 @@ class openstack(PluginFileInjector):
                 ansible_variables[var_name] = inventory_update.source_vars_dict[var_name]
                 provided_count += 1
         if provided_count:
+            # Must we provide all 3 because the user provides any 1 of these??
+            # this probably results in some incorrect mangling of the defaults
             openstack_data['ansible'] = ansible_variables
         return openstack_data
 
@@ -2121,30 +2129,40 @@ class openstack(PluginFileInjector):
         f.close()
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 
-        def new_hostnames_thing(a_bool_maybe):
-            if a_bool_maybe:
-                return 'uuid'
+        def use_host_name_for_name(a_bool_maybe):
+            if not isinstance(a_bool_maybe, bool):
+                # Could be specified by user via "host" or "uuid"
+                return a_bool_maybe
+            elif a_bool_maybe:
+                return 'name'  # plugin default
             else:
-                return 'name'
+                return 'uuid'
 
         ret = dict(
             plugin=self.plugin_name,
-            expand_hostvars=False,
             fail_on_errors=True,
-            inventory_hostname=new_hostnames_thing(True),
+            expand_hostvars=True,
+            inventory_hostname=use_host_name_for_name(False),
             clouds_yaml_path=[path]  # why a list? it just is
         )
-        ansible_variables = {
-            'use_hostnames': True,
-            'expand_hostvars': False,
-            'fail_on_errors': True,
-        }
+        # Note: mucking with defaults will break import integrity
+        # For the plugin, we need to use the same defaults as the old script
+        # or else imports will conflict. To find script defaults you have
+        # to read source code of the script.
+        #
+        # Script Defaults                           Plugin Defaults
+        # 'use_hostnames': False,                   'name' (True)
+        # 'expand_hostvars': True,                  'no' (False)
+        # 'fail_on_errors': True,                   'no' (False)
+        #
+        # These are, yet again, different from ansible_variables in script logic
+        # but those are applied inconsistently
         source_vars = inventory_update.source_vars_dict
         for var_name in ['expand_hostvars', 'fail_on_errors']:
-            if var_name in inventory_update.source_vars_dict:
+            if var_name in source_vars:
                 ret[var_name] = source_vars[var_name]
         if 'use_hostnames' in source_vars:
-            ret['inventory_hostname'] = new_hostnames_thing(source_vars['use_hostnames'])
+            ret['inventory_hostname'] = use_host_name_for_name(source_vars['use_hostnames'])
         return ret
 
 
