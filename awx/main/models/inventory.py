@@ -1223,12 +1223,21 @@ class InventorySourceOptions(BaseModel):
             ('ami_id', _('Image ID')),
             ('availability_zone', _('Availability Zone')),
             ('aws_account', _('Account')),
+            # These should have been added, but plugins do not support them
+            # so we will avoid introduction, because it would regress anyway
+            # ('elasticache_cluster', _('ElastiCache Cluster')),
+            # ('elasticache_engine', _('ElastiCache Engine')),
+            # ('elasticache_parameter_group', _('ElastiCache Parameter Group')),
+            # ('elasticache_replication_group', _('ElastiCache Replication Group')),
             ('instance_id', _('Instance ID')),
             ('instance_state', _('Instance State')),
             ('platform', _('Platform')),
             ('instance_type', _('Instance Type')),
             ('key_pair', _('Key Name')),
+            # ('rds_engine', _('RDS Engine')),
+            # ('rds_parameter_group', _('RDP Parameter Group')),
             ('region', _('Region')),
+            # ('route53_names', _('Route53 Names')),
             ('security_group', _('Security Group')),
             ('tag_keys', _('Tags')),
             ('tag_none', _('Tag None')),
@@ -1913,8 +1922,8 @@ class azure_rm(PluginFileInjector):
             default_host_filters=[],
             # Groups that the script returned
             keyed_groups=[
-                {'prefix': None, 'key': 'location'},
-                {'prefix': None, 'key': 'name'}
+                {'prefix': '', 'separator': '', 'key': 'location'},
+                {'prefix': '', 'separator': '', 'key': 'name'}
             ]
         )
 
@@ -1947,17 +1956,124 @@ class azure_rm(PluginFileInjector):
 
 class ec2(PluginFileInjector):
     plugin_name = 'aws_ec2'
-    initial_version = '2.5'
+    initial_version = '2.6'  # 2.5 has bugs forming keyed groups
     ini_env_reference = 'EC2_INI_PATH'
 
+    def _compat_compose_vars(self):
+        # https://gist.github.com/s-hertel/089c613914c051f443b53ece6995cc77
+        return {
+            # vars that change
+            'ec2_block_devices': (
+                "dict(block_device_mappings | map(attribute='device_name') | list | zip(block_device_mappings "
+                "| map(attribute='ebs.volume_id') | list))"
+            ),
+            'ec2_dns_name': 'public_dns_name',
+            'ec2_group_name': 'placement.group_name',
+            'ec2_instance_profile': 'iam_instance_profile | default("")',
+            'ec2_ip_address': 'public_ip_address',
+            'ec2_kernel': 'kernel_id | default("")',
+            'ec2_monitored':  "monitoring.state in ['enabled', 'pending']",
+            'ec2_monitoring_state': 'monitoring.state',
+            'ec2_placement': 'placement.availability_zone',
+            'ec2_ramdisk': 'ramdisk_id | default("")',
+            'ec2_reason': 'state_transition_reason',
+            'ec2_security_group_ids': "security_groups | map(attribute='group_id') | list |  join(',')",
+            'ec2_security_group_names': "security_groups | map(attribute='group_name') | list |  join(',')",
+            'ec2_state': 'state.name',
+            'ec2_state_code': 'state.code | int',
+            'ec2_state_reason': 'state_reason.message if state_reason is defined else ""',
+            'ec2_sourceDestCheck': 'source_dest_check | lower | string',  # butchered snake_case case not a typo.
+            # vars that just need ec2_ prefix
+            'ec2_ami_launch_index': 'ami_launch_index | string',
+            'ec2_architecture': 'architecture',
+            'ec2_client_token': 'client_token',
+            'ec2_ebs_optimized': 'ebs_optimized',
+            'ec2_hypervisor': 'hypervisor',
+            'ec2_image_id': 'image_id',
+            'ec2_instance_type': 'instance_type',
+            'ec2_key_name': 'key_name',
+            'ec2_launch_time': 'launch_time',
+            'ec2_platform': 'platform | default("")',
+            'ec2_private_dns_name': 'private_dns_name',
+            'ec2_private_ip_address': 'private_ip_address',
+            'ec2_public_dns_name': 'public_dns_name',
+            'ec2_region': 'placement.region',
+            'ec2_root_device_name': 'root_device_name',
+            'ec2_root_device_type': 'root_device_type',
+            'ec2_spot_instance_request_id': 'spot_instance_request_id',
+            'ec2_subnet_id': 'subnet_id',
+            'ec2_virtualization_type': 'virtualization_type',
+            'ec2_vpc_id': 'vpc_id'
+        }
+
     def inventory_as_dict(self, inventory_update, private_data_dir):
+        keyed_groups = []
+        group_by_hostvar = {
+            'ami_id': {'prefix': '', 'separator': '', 'key': 'image_id'},
+            'availability_zone': {'prefix': '', 'separator': '', 'key': 'placement.availability_zone'},
+            'aws_account': None,  # not an option with plugin
+            'instance_id': {'prefix': '', 'separator': '', 'key': 'instance_id'},  # normally turned off
+            'instance_state': {'prefix': 'instance_state', 'key': 'state.name'},
+            'platform': {'key': 'platform'},
+            'instance_type': {'prefix': 'type', 'key': 'instance_type'},
+            'key_pair': {'prefix': 'key', 'key': 'key_name'},
+            'region': {'prefix': '', 'separator': '', 'key': 'placement.region'},
+            # Security requires some ninja jinja2 syntax, credit to s-hertel
+            'security_group': {'prefix': 'security_group', 'key': 'security_groups | json_query("[].group_name")'},
+            'tag_keys': {'prefix': 'tag', 'key': 'tags'},
+            'tag_none': None,  # grouping by no tags isn't a different thing with plugin
+            'vpc_id': {'key': 'vpc_id'},
+        }
+        # -- same as script here --
+        group_by = [x.strip().lower() for x in inventory_update.group_by.split(',') if x.strip()]
+        for choice in inventory_update.get_ec2_group_by_choices():
+            value = bool((group_by and choice[0] in group_by) or (not group_by and choice[0] != 'instance_id'))
+            # -- end sameness to script --
+            if value:
+                this_keyed_group = group_by_hostvar.get(choice[0], None)
+                # If a keyed group syntax does not exist, there is nothing we can do to get this group
+                if this_keyed_group is not None:
+                    keyed_groups.append(this_keyed_group)
+
+        # Instance ID not part of compat vars, because of settings.EC2_INSTANCE_ID_VAR
+        # remove this variable at your own peril, there be dragons
+        compose_dict = {'ec2_id': 'instance_id'}
+        # TODO: add an ability to turn this off
+        compose_dict.update(self._compat_compose_vars())
+
+        inst_filters = {
+            # The script returned all states by default, the plugin does not
+            # https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html#options
+            # options: pending | running | shutting-down | terminated | stopping | stopped
+            'instance-state-name': [
+                'running'
+                # 'pending', 'running', 'shutting-down', 'terminated', 'stopping', 'stopped'
+            ]
+        }
+        if inventory_update.instance_filters:
+            # logic used to live in ec2.py, now it belongs to us. Yay more code?
+            filter_sets = [f for f in inventory_update.instance_filters.split(',') if f]
+
+            for instance_filter in filter_sets:
+                # AND logic not supported, unclear how to...
+                instance_filter = instance_filter.strip()
+                if not instance_filter or '=' not in instance_filter:
+                    continue
+                filter_key, filter_value = [x.strip() for x in instance_filter.split('=', 1)]
+                if not filter_key:
+                    continue
+                inst_filters[filter_key] = filter_value
+
         ret = dict(
             plugin=self.plugin_name,
             hostnames=[
                 'network-interface.addresses.association.public-ip',  # non-default
                 'dns-name',
                 'private-dns-name'
-            ]
+            ],
+            keyed_groups=keyed_groups,
+            compose=compose_dict,
+            filters=inst_filters
         )
         # TODO: all regions currently failing due to:
         # https://github.com/ansible/ansible/pull/48079
