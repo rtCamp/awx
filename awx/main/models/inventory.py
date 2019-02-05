@@ -1980,9 +1980,10 @@ class ec2(PluginFileInjector):
             'ec2_security_group_ids': "security_groups | map(attribute='group_id') | list |  join(',')",
             'ec2_security_group_names': "security_groups | map(attribute='group_name') | list |  join(',')",
             'ec2_state': 'state.name',
-            'ec2_state_code': 'state.code | int',
+            'ec2_state_code': 'state.code',
             'ec2_state_reason': 'state_reason.message if state_reason is defined else ""',
             'ec2_sourceDestCheck': 'source_dest_check | lower | string',  # butchered snake_case case not a typo.
+            'ec2_account_id': 'network_interfaces | json_query("[0].owner_id")',
             # vars that just need ec2_ prefix
             'ec2_ami_launch_index': 'ami_launch_index | string',
             'ec2_architecture': 'architecture',
@@ -2014,7 +2015,7 @@ class ec2(PluginFileInjector):
             'aws_account': None,  # not an option with plugin
             'instance_id': {'prefix': '', 'separator': '', 'key': 'instance_id'},  # normally turned off
             'instance_state': {'prefix': 'instance_state', 'key': 'state.name'},
-            'platform': {'key': 'platform'},
+            'platform': {'prefix': 'platform', 'key': 'platform'},
             'instance_type': {'prefix': 'type', 'key': 'instance_type'},
             'key_pair': {'prefix': 'key', 'key': 'key_name'},
             'region': {'prefix': '', 'separator': '', 'key': 'placement.region'},
@@ -2022,7 +2023,8 @@ class ec2(PluginFileInjector):
             'security_group': {'prefix': 'security_group', 'key': 'security_groups | json_query("[].group_name")'},
             'tag_keys': {'prefix': 'tag', 'key': 'tags'},
             'tag_none': None,  # grouping by no tags isn't a different thing with plugin
-            'vpc_id': {'key': 'vpc_id'},
+            # naming is redundant, like vpc_id_vpc_8c412cea, but intended
+            'vpc_id': {'prefix': 'vpc_id', 'key': 'vpc_id'},
         }
         # -- same as script here --
         group_by = [x.strip().lower() for x in inventory_update.group_by.split(',') if x.strip()]
@@ -2072,6 +2074,7 @@ class ec2(PluginFileInjector):
                 'private-dns-name'
             ],
             keyed_groups=keyed_groups,
+            groups={'ec2': True},  # plugin provides "aws_ec2", but not this
             compose=compose_dict,
             filters=inst_filters
         )
