@@ -92,6 +92,7 @@ services:
       VIRTUAL_HOST: {{ awx_hostname }}
       VIRTUAL_PORT: 8052
       LETSENCRYPT_HOST: {{ awx_hostname }}
+      HSTS: 'off'
     {% endif %}
     {% if (le_email is defined) %}
       LETSENCRYPT_EMAIL: {{ le_email }}
