@@ -46,7 +46,7 @@ pip install docker-compose
 
 5. Clone the project
 ```
-git clone https://github.com/mbtamuli/awx.git
+git clone https://github.com/mbtamuli/awx.git --depth=1
 git clone https://github.com/ansible/awx-logos.git
 ```
 

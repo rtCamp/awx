@@ -9,9 +9,6 @@ localhost ansible_connection=local ansible_python_interpreter="/usr/bin/env pyth
 dockerhub_base=ansible
 
 # The following two options are required to enable SSL.
-# Also, it is recommended to provide a valid email address through the
-#     le_email variable, so that Let's Encrypt can warn you
-#     about expiring certificates and allow you to recover your account.
 # awx_hostname=www.example.com
 # le_email=admin@example.com
 
