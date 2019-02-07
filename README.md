@@ -1,46 +1,65 @@
-[![Gated by Zuul](https://zuul-ci.org/gated.svg)](https://ansible.softwarefactory-project.io/zuul/status)
+# AWX with SSL :sunglasses:
 
-<img src="https://raw.githubusercontent.com/ansible/awx-logos/master/awx/ui/client/assets/logo-login.svg?sanitize=true" width=200 alt="AWX" />
+This repo is a fork of [AWX](https://github.com/ansible/awx) with a just one
+change.
 
-AWX provides a web-based user interface, REST API, and task engine built on top of [Ansible](https://github.com/ansible/ansible). It is the upstream project for [Tower](https://www.ansible.com/tower), a commercial derivative of AWX.  
+It generates the SSL certificates, uses them to serve AWX on HTTPS and
+also renews the certificates. :tada: :confetti_ball:
 
-To install AWX, please view the [Install guide](./INSTALL.md).
+## Steps to setup AWX
 
-To learn more about using AWX, and Tower, view the [Tower docs site](http://docs.ansible.com/ansible-tower/index.html).
+**Note:** This is not an official install guide for AWX.
+You should absolutely read [official install guide](
+https://github.com/ansible/awx/blob/devel/INSTALL.md) if you have not setup AWX
+before. Mentioned below are steps to deploy AWX using Docker-Compose. Altough
+the steps have only been tested on Ubuntu 18.04, but should work on Ubuntu
+14.04 and 16.04 also. Still, YMMV.
 
-The AWX Project Frequently Asked Questions can be found [here](https://www.ansible.com/awx-project-faq).
+1. Setup Ansible :a:
+```bash
+sudo apt-get update && \
+  sudo apt-get install software-properties-common -y && \
+  sudo apt-add-repository --yes --update ppa:ansible/ansible -y && \
+  sudo apt-get install ansible -y
+```
 
-The AWX logos and branding assets are covered by [our trademark guidelines](https://github.com/ansible/awx-logos/blob/master/TRADEMARKS.md).
+2. Setup Docker and Docker-Compose :whale:
+```bash
+curl -fsSL https://get.docker.com | sudo -E bash -
 
-Contributing
-------------
+sudo curl -L "https://github.com/docker/compose/releases/download/1.23.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
 
-- Refer to the [Contributing guide](./CONTRIBUTING.md) to get started developing, testing, and building AWX.
-- All code submissions are done through pull requests against the `devel` branch.
-- All contributors must use git commit --signoff for any commit to be merged, and agree that usage of --signoff constitutes agreement with the terms of [DCO 1.1](./DCO_1_1.md)
-- Take care to make sure no merge commits are in the submission, and use `git rebase` vs `git merge` for this reason.
-- If submitting a large code change, it's a good idea to join the `#ansible-awx` channel on irc.freenode.net, and talk about what you would like to do or add first. This not only helps everyone know what's going on, it also helps save time and effort, if the community decides some changes are needed.
+3. Setup Node.js
+```bash
+curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
 
-Reporting Issues
-----------------
+4. Setup other dependencies
+```bash
+sudo apt-get install python-pip -y
+pip install docker
+pip install docker-compose
+```
 
-If you're experiencing a problem that you feel is a bug in AWX, or have ideas for how to improve AWX, we encourage you to open an issue, and share your feedback. But before opening a new issue, we ask that you please take a look at our [Issues guide](./ISSUES.md).
+5. Clone the project
+```
+git clone https://github.com/mbtamuli/awx.git
+git clone https://github.com/ansible/awx-logos.git
+```
 
-Code of Conduct
----------------
+6. Configure and run the installer. :rocket:
 
-We ask all of our community members and contributors to adhere to the [Ansible code of conduct](http://docs.ansible.com/ansible/latest/community/code_of_conduct.html). If you have questions, or need assistance, please reach out to our community team at [codeofconduct@ansible.com](mailto:codeofconduct@ansible.com)   
-
-Get Involved
-------------
-
-We welcome your feedback and ideas. Here's how to reach us with feedback and questions:
-
-- Join the `#ansible-awx` channel on irc.freenode.net
-- Join the [mailing list](https://groups.google.com/forum/#!forum/awx-project) 
-
-License
--------
-
-[Apache v2](./LICENSE.md)
-
+**Note:** _Replace the values for `awx_hostname` and `le_email`_
+```
+cd awx/installer
+sed -i \
+  -e 's/^.*use_docker_compose.*/use_docker_compose=true/' \
+  -e 's/.*awx_official.*/awx_official=true/' \
+  -e 's/.*awx_hostname.*/awx_hostname=awx.example.com/' \
+  -e 's/.*le_email.*/le_email=admin@example.com/' \
+  inventory
+ansible-playbook -i inventory install.yml
+```

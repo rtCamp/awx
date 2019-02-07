@@ -2,6 +2,31 @@
 version: '2'
 services:
 
+  # For SSL
+  {% if (awx_hostname is defined) %}
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    volumes:
+      - /etc/nginx/certs
+      - /etc/nginx/vhost.d
+      - /usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+  {% endif %}
+
+  {% if (le_email is defined) %}
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    volumes_from:
+      - nginx-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+  {% endif %}
+
   web:
     image: {{ awx_web_docker_actual_image }}
     depends_on:
@@ -10,8 +35,10 @@ services:
       {% if pg_hostname is not defined %}
       - postgres
       {% endif %}
+    {% if (awx_hostname is not defined) %}
     ports:
       - "{{ host_port }}:8052"
+    {% endif %}
     hostname: {{ awx_web_hostname }}
     user: root
     restart: unless-stopped
@@ -61,6 +88,14 @@ services:
       MEMCACHED_PORT: 11211
       AWX_ADMIN_USER: {{ admin_user|default('admin') }}
       AWX_ADMIN_PASSWORD: {{ admin_password|default('password') }}
+    {% if (awx_hostname is defined) %}
+      VIRTUAL_HOST: {{ awx_hostname }}
+      VIRTUAL_PORT: 8052
+      LETSENCRYPT_HOST: {{ awx_hostname }}
+    {% endif %}
+    {% if (le_email is defined) %}
+      LETSENCRYPT_EMAIL: {{ le_email }}
+    {% endif %}
 
   task:
     image: {{ awx_task_docker_actual_image }}
